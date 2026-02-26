@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
+import GlobalAI from './GlobalAI';
 import '../../app.css';
 
 export default function AppLayout() {
@@ -19,6 +20,7 @@ export default function AppLayout() {
             >
                 <Outlet />
             </motion.main>
+            <GlobalAI />
         </div>
     );
 }
