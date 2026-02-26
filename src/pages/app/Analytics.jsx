@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     FiBarChart2, FiTarget, FiTrendingUp, FiZap, FiAward, FiStar,
     FiMap, FiShield, FiActivity, FiBriefcase, FiDollarSign, FiHeart,
-    FiSun, FiCheckCircle, FiChevronRight,
+    FiSun, FiCheckCircle, FiChevronRight, FiClock,
 } from 'react-icons/fi';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
