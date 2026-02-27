@@ -34,8 +34,6 @@ export default function Login() {
         setLoading(false);
     };
 
-    // DEV bypass — navigate directly
-    const devBypass = () => navigate('/app');
 
     return (
         <div className="auth-page">
@@ -128,10 +126,6 @@ export default function Login() {
                     </button>
                 </form>
 
-                {/* Dev bypass */}
-                <button onClick={devBypass} style={{ width: '100%', marginTop: 10, padding: '10px', borderRadius: 10, background: 'rgba(0,245,255,0.06)', border: '1px dashed rgba(0,245,255,0.2)', color: '#00f5ff', cursor: 'pointer', fontSize: 13, fontFamily: 'Inter, sans-serif' }}>
-                    🔧 Dev Mode — Enter App (Skip Auth)
-                </button>
 
                 <p className="auth-switch">
                     Don't have an account? <Link to="/signup">Create one free</Link>

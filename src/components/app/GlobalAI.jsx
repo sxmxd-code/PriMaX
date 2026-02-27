@@ -38,7 +38,7 @@ export default function GlobalAI() {
 
         try {
             const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-            const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+            const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
             const prompt = `You are the PriMaX Hub Global AI, an elite personal assistant. Context: The user is using a productivity, finance, career, and fitness app. Answer concisely, smartly, and use formatting. User: ${userTxt}`;
             const result = await model.generateContent(prompt);
             setMsgs((p) => [...p, { role: 'ai', text: result.response.text() }]);
@@ -104,9 +104,11 @@ export default function GlobalAI() {
                             height: isExpanded ? 'calc(100vh - 48px)' : 600,
                             maxWidth: isExpanded ? 1200 : '100%',
                             borderRadius: 20,
-                            background: 'var(--app-surface)',
-                            border: '1px solid var(--app-border)',
-                            boxShadow: '0 20px 40px rgba(0,0,0,0.4), 0 0 100px rgba(124,58,237,0.1)',
+                            background: 'rgba(13, 11, 28, 0.97)',
+                            backdropFilter: 'blur(20px)',
+                            WebkitBackdropFilter: 'blur(20px)',
+                            border: '1px solid rgba(124,58,237,0.25)',
+                            boxShadow: '0 20px 60px rgba(0,0,0,0.6), 0 0 80px rgba(124,58,237,0.08)',
                             display: 'flex',
                             flexDirection: 'column',
                             zIndex: 10000,

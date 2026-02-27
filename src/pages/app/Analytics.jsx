@@ -1,375 +1,446 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     FiBarChart2, FiTarget, FiTrendingUp, FiZap, FiAward, FiStar,
-    FiMap, FiShield, FiActivity, FiBriefcase, FiDollarSign, FiHeart,
-    FiSun, FiCheckCircle, FiChevronRight, FiClock,
+    FiActivity, FiBriefcase, FiDollarSign, FiHeart, FiSun,
+    FiRotateCcw, FiCheckCircle, FiCircle,
 } from 'react-icons/fi';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
+import { callGemini, SYSTEM_PROMPTS } from '../../lib/aiService';
+
+const Spinner = () => (
+    <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
+        style={{ display: 'inline-flex', color: '#7c3aed' }}>
+        <FiRotateCcw size={18} />
+    </motion.div>
+);
 
 const TABS = [
-    { id: 'overview', label: 'Unified Score', icon: <FiBarChart2 size={14} /> },
-    { id: 'blueprint', label: 'Life Blueprint', icon: <FiMap size={14} /> },
+    { id: 'overview', label: 'Growth Score', icon: <FiBarChart2 size={14} /> },
+    { id: 'trends', label: 'Trends', icon: <FiTrendingUp size={14} /> },
     { id: 'gamified', label: 'Achievements', icon: <FiAward size={14} /> },
-    { id: 'trends', label: 'Deep Analytics', icon: <FiTrendingUp size={14} /> },
     { id: 'ai', label: 'AI Analyst', icon: <FiZap size={14} /> },
 ];
 
-const scores = {
-    total: 84, delta: '+3',
-    domains: [
-        {
-            id: 'career', name: 'Career & Growth', score: 88, target: 90, icon: <FiBriefcase />, color: '#7c3aed',
-            metrics: [{ label: 'Skill Progress', val: '92%' }, { label: 'Goal Velocity', val: 'High' }]
-        },
-        {
-            id: 'finance', name: 'Wealth & Assets', score: 82, target: 85, icon: <FiDollarSign />, color: '#10b981',
-            metrics: [{ label: 'Savings Rate', val: '28%' }, { label: 'Budget Health', val: 'Good' }]
-        },
-        {
-            id: 'fitness', name: 'Health & Fitness', score: 78, target: 80, icon: <FiHeart />, color: '#ec4899',
-            metrics: [{ label: 'Workout Consistency', val: '4/wk' }, { label: 'Recovery', val: 'Fair' }]
-        },
-        {
-            id: 'mental', name: 'Mental & Spirit', score: 88, target: 95, icon: <FiSun />, color: '#f59e0b',
-            metrics: [{ label: 'Avg Mood', val: '4.1/5' }, { label: 'Practice Streak', val: '31d' }]
-        },
-    ]
-};
+const fadeUp = (d = 0) => ({ initial: { opacity: 0, y: 16 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.4, delay: d } });
 
-const blueprint = [
-    {
-        id: 'vision_2030', title: 'The 2030 Master Vision', years: '4 Years Out', color: '#00f5ff',
-        desc: 'Hit Staff Engineer, reach $200K net worth, establish a stable writing habit, and run a marathon.',
-        milestones: [
-            { name: 'Senior → Staff Promotion', done: false },
-            { name: 'Max out Roth IRA annually', done: true },
-            { name: '10K Newsletter Subscribers', done: false },
-        ]
-    },
-    {
-        id: 'vision_2027', title: 'The 2027 Accelerator', years: '1 Year Out', color: '#7c3aed',
-        desc: 'Ship 3 SaaS MVPs, build emergency fund to 6 months, drop body fat to 14%.',
-        milestones: [
-            { name: 'Launch SaaS #1', done: true },
-            { name: 'Save $15K Emergency', done: false },
-            { name: 'Consistent PPL Split', done: true },
-        ]
-    }
-];
+function Card({ children, style = {} }) {
+    return <div style={{ borderRadius: 18, background: 'var(--app-surface)', border: '1px solid var(--app-border)', padding: 22, ...style }}>{children}</div>;
+}
 
-const achievements = [
-    { id: 'a1', name: 'Iron Will', desc: 'Workout 30 days in a row', icon: '🏋️', tier: 'Gold', locked: false, color: '#f59e0b', progress: 100 },
-    { id: 'a2', name: 'Zen Master', desc: 'Log 50 meditation sessions', icon: '🧘', tier: 'Silver', locked: false, color: '#e2e8f0', progress: 100 },
-    { id: 'a3', name: 'Wealth Builder', desc: 'Save $10,000', icon: '💰', tier: 'Bronze', locked: false, color: '#cd7f32', progress: 100 },
-    { id: 'a4', name: 'Early Bird', desc: 'Wake up before 6AM for 14 days', icon: '🌅', tier: 'Silver', locked: true, color: '#e2e8f0', progress: 45 },
-    { id: 'a5', name: 'Code Ninja', desc: 'Ship 10 side projects', icon: '💻', tier: 'Gold', locked: true, color: '#f59e0b', progress: 30 },
-    { id: 'a6', name: 'Polymath', desc: 'Reach level 50 in 3 domains', icon: '🧠', tier: 'Diamond', locked: true, color: '#00f5ff', progress: 85 },
-];
-
-const heatmapData = Array.from({ length: 84 }, () => Math.floor(Math.random() * 5)); // 12 weeks of data
-
-const Card = ({ children, style = {} }) => (
-    <div style={{ borderRadius: 18, background: 'var(--app-surface)', border: '1px solid var(--app-border)', padding: 22, ...style }}>{children}</div>
-);
-const fadeUp = (d = 0) => ({ initial: { opacity: 0, y: 14 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.4, delay: d } });
+function Score({ value, color = '#7c3aed', size = 80 }) {
+    const r = size / 2 - 8;
+    const circ = 2 * Math.PI * r;
+    const pct = Math.min(value / 100, 1);
+    return (
+        <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+            <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+                <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={8} />
+                <motion.circle cx={size / 2} cy={size / 2} r={r} fill="none"
+                    stroke={color} strokeWidth={8} strokeLinecap="round"
+                    strokeDasharray={circ}
+                    initial={{ strokeDashoffset: circ }}
+                    animate={{ strokeDashoffset: circ - circ * pct }}
+                    transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }} />
+            </svg>
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Orbitron, monospace', fontSize: size / 4.5, fontWeight: 900, color }}>
+                {value}
+            </div>
+        </div>
+    );
+}
 
 export default function Analytics() {
+    const { user } = useAuth();
     const [tab, setTab] = useState('overview');
+    const [stats, setStats] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!user) return;
+        (async () => {
+            const today = new Date().toISOString().split('T')[0];
+            const thisMonth = today.substring(0, 7);
+            const [taskRes, habitRes, goalRes, txRes, workoutRes, journalRes, moodRes, gratRes] = await Promise.all([
+                supabase.from('tasks').select('status,priority,created_at').eq('user_id', user.id),
+                supabase.from('habits').select('streak,completions,name').eq('user_id', user.id),
+                supabase.from('savings_goals').select('name,target_amount,current_amount').eq('user_id', user.id),
+                supabase.from('transactions').select('amount,type,category,date').eq('user_id', user.id),
+                supabase.from('workouts').select('type,duration_minutes,completed_at').eq('user_id', user.id),
+                supabase.from('journal_entries').select('id,created_at').eq('user_id', user.id),
+                supabase.from('mood_logs').select('mood_value,logged_at').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(30),
+                supabase.from('gratitude_entries').select('id').eq('user_id', user.id),
+            ]);
+
+            const tasks = taskRes.data || [];
+            const habits = habitRes.data || [];
+            const goals = goalRes.data || [];
+            const txs = txRes.data || [];
+            const workouts = workoutRes.data || [];
+            const journals = journalRes.data || [];
+            const moods = moodRes.data || [];
+            const gratitude = gratRes.data || [];
+
+            // Scores (0-100 each)
+            const doneRatio = tasks.length ? tasks.filter(t => t.status === 'done').length / tasks.length : 0;
+            const productivityScore = Math.round(Math.min(100, doneRatio * 60 + habits.length * 5 + Math.min(habits.reduce((s, h) => s + (h.streak || 0), 0) / 10, 40)));
+            const income = txs.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
+            const expense = txs.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
+            const savingsRate = income > 0 ? Math.max(0, (income - expense) / income) : 0;
+            const financeScore = Math.round(Math.min(100, savingsRate * 60 + goals.length * 8 + (txs.length > 0 ? 20 : 0)));
+            const fitnessScore = Math.round(Math.min(100, workouts.length * 6 + habits.filter(h => h.streak > 0).length * 5));
+            const avgMood = moods.length ? moods.reduce((s, m) => s + m.mood_value, 0) / moods.length : 0;
+            const mentalScore = Math.round(Math.min(100, avgMood * 12 + journals.length * 3 + gratitude.length * 4));
+            const overallScore = Math.round((productivityScore + financeScore + fitnessScore + mentalScore) / 4);
+
+            // Workout types breakdown
+            const workoutTypes = {};
+            workouts.forEach(w => { workoutTypes[w.type || 'Other'] = (workoutTypes[w.type || 'Other'] || 0) + 1; });
+
+            // Monthly spend by category
+            const catSpend = {};
+            txs.filter(t => t.type === 'expense').forEach(t => { catSpend[t.category || 'Other'] = (catSpend[t.category || 'Other'] || 0) + Number(t.amount); });
+
+            // Mood trend last 7
+            const moodTrend = moods.slice(0, 7).reverse();
+
+            setStats({
+                overallScore, productivityScore, financeScore, fitnessScore, mentalScore,
+                tasks: { total: tasks.length, done: tasks.filter(t => t.status === 'done').length, open: tasks.filter(t => t.status !== 'done').length },
+                habits: { total: habits.length, maxStreak: habits.length ? Math.max(...habits.map(h => h.streak || 0)) : 0, top: habits.sort((a, b) => (b.streak || 0) - (a.streak || 0)).slice(0, 3) },
+                finance: { income, expense, net: income - expense, catSpend, savingsRate: Math.round(savingsRate * 100), goalsCount: goals.length, goals },
+                fitness: { count: workouts.length, totalMins: workouts.reduce((s, w) => s + (w.duration_minutes || 0), 0), workoutTypes },
+                mental: { journals: journals.length, avgMood: avgMood ? avgMood.toFixed(1) : null, moodTrend, gratitude: gratitude.length },
+            });
+            setLoading(false);
+        })();
+    }, [user]);
 
     return (
         <div className="page-shell">
             <motion.div {...fadeUp(0)} style={{ marginBottom: 24 }}>
-                <div className="page-tag"><FiBarChart2 size={10} /> Analytics & Systems</div>
-                <h1 className="page-title" style={{ fontSize: 'clamp(22px,3vw,32px)' }}>Life Command Core</h1>
-                <p className="page-desc">The ultimate unified view of your trajectory. Cross-domain insights and master planning.</p>
+                <div className="page-tag"><FiBarChart2 size={10} /> Analytics</div>
+                <h1 className="page-title">Life Analytics</h1>
+                <p className="page-desc">Real insights across every domain of your life — powered by your actual data.</p>
             </motion.div>
 
-            <div style={{ display: 'flex', gap: 6, marginBottom: 22, overflowX: 'auto', paddingBottom: 4 }}>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 22 }}>
                 {TABS.map(t => (
                     <button key={t.id} onClick={() => setTab(t.id)}
-                        style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600, fontFamily: 'Inter, sans-serif', cursor: 'pointer', whiteSpace: 'nowrap', border: tab === t.id ? '1px solid rgba(124,58,237,0.4)' : '1px solid transparent', background: tab === t.id ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.03)', color: tab === t.id ? '#f0f0ff' : 'var(--text-3)', transition: 'all 0.2s' }}>
+                        style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600, fontFamily: 'Inter, sans-serif', cursor: 'pointer', border: tab === t.id ? '1px solid rgba(124,58,237,0.4)' : '1px solid transparent', background: tab === t.id ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.03)', color: tab === t.id ? '#f0f0ff' : 'var(--text-3)', transition: 'all 0.2s' }}>
                         {t.icon} {t.label}
                     </button>
                 ))}
             </div>
 
-            <AnimatePresence mode="wait">
-                <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.25 }}>
-                    {tab === 'overview' && <UnifiedScore />}
-                    {tab === 'blueprint' && <LifeBlueprint />}
-                    {tab === 'gamified' && <Gamification />}
-                    {tab === 'trends' && <DeepTrends />}
-                    {tab === 'ai' && <AIAnalyst />}
-                </motion.div>
-            </AnimatePresence>
-        </div>
-    );
-}
-
-function UnifiedScore() {
-    return (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-            {/* Prime Core Score */}
-            <Card style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 20px', background: 'radial-gradient(circle at center, rgba(124,58,237,0.15) 0%, rgba(0,0,0,0) 70%)', border: '1px solid rgba(124,58,237,0.3)', position: 'relative', overflow: 'hidden' }}>
-                <div style={{ position: 'absolute', inset: 0, opacity: 0.1, backgroundImage: 'radial-gradient(#7c3aed 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
-                <div style={{ position: 'relative', zIndex: 1, textAlign: 'center' }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#00f5ff', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: 12 }}>PriMaX Prime Score</div>
-                    <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', bounce: 0.5 }}
-                        style={{ fontSize: 96, fontFamily: 'Orbitron, monospace', fontWeight: 900, color: '#f0f0ff', lineHeight: 1, textShadow: '0 0 40px rgba(124,58,237,0.5)' }}>
-                        {scores.total}
-                    </motion.div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12 }}>
-                        <span style={{ fontSize: 13, padding: '4px 12px', borderRadius: 100, background: 'rgba(16,185,129,0.15)', color: '#10b981', fontWeight: 700 }}>{scores.delta} this month</span>
-                        <span style={{ fontSize: 12, color: 'var(--text-3)' }}>Top 12% of users</span>
-                    </div>
+            {loading ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300, gap: 14 }}>
+                    <Spinner /><span style={{ color: 'var(--text-3)', fontSize: 14 }}>Analysing your data...</span>
                 </div>
-            </Card>
-
-            {/* Domain Breakdown */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                {scores.domains.map((d, i) => (
-                    <motion.div key={d.id} {...fadeUp(i * 0.05)}>
-                        <Card style={{ padding: '16px 18px', height: '100%', display: 'flex', flexDirection: 'column' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                                <div style={{ width: 32, height: 32, borderRadius: 8, background: `${d.color}15`, color: d.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>{d.icon}</div>
-                                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)' }}>{d.name}</div>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 10 }}>
-                                <span style={{ fontFamily: 'Orbitron, monospace', fontSize: 28, fontWeight: 900, color: d.color }}>{d.score}</span>
-                                <span style={{ fontSize: 11, color: 'var(--text-3)' }}>/ {d.target} target</span>
-                            </div>
-                            <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.05)', marginBottom: 14 }}>
-                                <motion.div initial={{ width: 0 }} animate={{ width: `${(d.score / 100) * 100}%` }} transition={{ duration: 1, delay: i * 0.1 }}
-                                    style={{ height: '100%', borderRadius: 2, background: d.color }} />
-                            </div>
-                            <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                {d.metrics.map((m, j) => (
-                                    <div key={j} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-                                        <span style={{ color: 'var(--text-3)' }}>{m.label}</span>
-                                        <span style={{ color: 'var(--text-1)', fontWeight: 600 }}>{m.val}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </Card>
+            ) : (
+                <AnimatePresence mode="wait">
+                    <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
+                        {tab === 'overview' && <OverviewTab stats={stats} />}
+                        {tab === 'trends' && <TrendsTab stats={stats} />}
+                        {tab === 'gamified' && <AchievementsTab stats={stats} />}
+                        {tab === 'ai' && <AIAnalystTab stats={stats} userId={user.id} />}
                     </motion.div>
-                ))}
-            </div>
+                </AnimatePresence>
+            )}
         </div>
     );
 }
 
-function LifeBlueprint() {
-    return (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20 }}>
-            {/* Timeline */}
-            <Card style={{ padding: '30px', position: 'relative' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', marginBottom: 24, textTransform: 'uppercase', letterSpacing: '0.08em' }}>🗺️ The Master Timeline</div>
-                <div style={{ position: 'absolute', left: 45, top: 70, bottom: 30, width: 2, background: 'linear-gradient(to bottom, #7c3aed, #00f5ff)', opacity: 0.3 }} />
+/* ── Overview Tab ─────────────────────────────────── */
+function OverviewTab({ stats }) {
+    const domains = [
+        { label: 'Productivity', score: stats.productivityScore, color: '#7c3aed', icon: <FiZap /> },
+        { label: 'Finance', score: stats.financeScore, color: '#10b981', icon: <FiDollarSign /> },
+        { label: 'Fitness', score: stats.fitnessScore, color: '#ec4899', icon: <FiHeart /> },
+        { label: 'Mental', score: stats.mentalScore, color: '#f59e0b', icon: <FiSun /> },
+    ];
 
-                {blueprint.map((b, i) => (
-                    <motion.div key={b.id} {...fadeUp(i * 0.1)} style={{ position: 'relative', paddingLeft: 40, marginBottom: 32 }}>
-                        <div style={{ position: 'absolute', left: 10, top: 4, width: 10, height: 10, borderRadius: '50%', background: b.color, boxShadow: `0 0 10px ${b.color}` }} />
-
-                        <div style={{ fontSize: 11, fontWeight: 800, color: b.color, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>{b.years}</div>
-                        <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-1)', marginBottom: 8 }}>{b.title}</h3>
-                        <p style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 16 }}>{b.desc}</p>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8, background: 'rgba(255,255,255,0.02)', padding: 16, borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)' }}>
-                            {b.milestones.map((m, j) => (
-                                <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                    <span style={{ color: m.done ? b.color : 'var(--text-3)' }}>{m.done ? <FiCheckCircle size={16} /> : <div style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid var(--text-3)' }} />}</span>
-                                    <span style={{ fontSize: 13, color: m.done ? 'var(--text-3)' : 'var(--text-1)', textDecoration: m.done ? 'line-through' : 'none' }}>{m.name}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </motion.div>
-                ))}
-            </Card>
-
-            {/* Goal Driven Mode */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-                <Card style={{ background: 'linear-gradient(135deg,rgba(0,245,255,0.08),rgba(124,58,237,0.04))', border: '1px solid rgba(0,245,255,0.2)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-                        <span style={{ fontSize: 24 }}>🎯</span>
-                        <span style={{ fontSize: 14, fontWeight: 800, color: '#00f5ff', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Goal-Driven Mode</span>
-                    </div>
-                    <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 16 }}>Your system is currently optimizing for <strong>The 2027 Accelerator</strong>. Tasks aligned with this blueprint are being prioritized across all modules.</p>
-                    <div style={{ padding: '10px', borderRadius: 8, background: 'rgba(0,245,255,0.1)', border: '1px solid rgba(0,245,255,0.2)', fontSize: 12, color: '#00f5ff', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <FiZap /> System Alignment Active
-                    </div>
-                </Card>
-
-                <Card>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', marginBottom: 14, textTransform: 'uppercase', letterSpacing: '0.08em' }}>🔔 Smart Reminders</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {['Career: Update resume with latest deploy metrics (7 days overdue)', 'Finance: Rebalance ETF portfolio (Due tomorrow)', 'Fitness: Switch to Hypertrophy block (Next week)'].map((r, i) => (
-                            <div key={i} style={{ display: 'flex', gap: 10, padding: 10, borderRadius: 8, background: 'rgba(255,255,255,0.03)' }}>
-                                <span style={{ color: i === 0 ? '#ef4444' : 'var(--text-3)', marginTop: 2 }}>{i === 0 ? <FiTarget /> : <FiClock />}</span>
-                                <span style={{ fontSize: 12, color: 'var(--text-1)', lineHeight: 1.5 }}>{r}</span>
-                            </div>
-                        ))}
-                    </div>
-                </Card>
-            </div>
+    if (stats.overallScore === 0 && stats.tasks.total === 0) return (
+        <div style={{ textAlign: 'center', padding: '60px 20px', opacity: 0.7 }}>
+            <div style={{ fontSize: 52, marginBottom: 14 }}>📊</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-1)', marginBottom: 6 }}>No data yet</div>
+            <div style={{ fontSize: 13, color: 'var(--text-2)' }}>Start using Productivity, Finance, Fitness and Mental modules to see your analytics.</div>
         </div>
     );
-}
 
-function Gamification() {
     return (
         <div>
-            {/* Player Status */}
-            <Card style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 24, background: 'linear-gradient(90deg, rgba(124,58,237,0.1) 0%, rgba(20,20,40,0) 100%)', border: '1px solid rgba(124,58,237,0.2)' }}>
-                <div style={{ position: 'relative', width: 80, height: 80 }}>
-                    <svg width="80" height="80" style={{ transform: 'rotate(-90deg)' }}>
-                        <circle cx="40" cy="40" r="36" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="6" />
-                        <motion.circle cx="40" cy="40" r="36" fill="none" stroke="#7c3aed" strokeWidth="6" strokeLinecap="round" strokeDasharray={2 * Math.PI * 36} initial={{ strokeDashoffset: 2 * Math.PI * 36 }} animate={{ strokeDashoffset: 2 * Math.PI * 36 * (1 - 0.75) }} transition={{ duration: 1.5, delay: 0.2 }} />
-                    </svg>
-                    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 700, marginTop: -4 }}>LVL</span>
-                        <span style={{ fontSize: 24, fontFamily: 'Orbitron, monospace', fontWeight: 900, color: '#f0f0ff', marginTop: -4 }}>42</span>
+            {/* Master score */}
+            <Card style={{ marginBottom: 20, background: 'linear-gradient(135deg,rgba(124,58,237,0.07),rgba(0,245,255,0.03))', border: '1px solid rgba(124,58,237,0.2)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 28, flexWrap: 'wrap' }}>
+                    <Score value={stats.overallScore} color="#7c3aed" size={110} />
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>Overall Life Score</div>
+                        <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 32, fontWeight: 900, color: 'var(--text-1)', lineHeight: 1 }}>{stats.overallScore}<span style={{ fontSize: 16, color: 'var(--text-3)' }}>/100</span></div>
+                        <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 8 }}>
+                            Based on {stats.tasks.total} tasks, {stats.habits.total} habits, {stats.fitness.count} workouts, and {stats.mental.journals} journal entries.
+                        </div>
                     </div>
-                </div>
-                <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, color: '#7c3aed', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>Growth Architect</div>
-                    <h2 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-1)', margin: 0 }}>Rank: Diamond I</h2>
-                    <div style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 6 }}>75,400 / 100,000 XP to next rank</div>
-                </div>
-                <div style={{ background: 'rgba(255,255,255,0.05)', padding: '14px 20px', borderRadius: 12, textAlign: 'center' }}>
-                    <div style={{ fontSize: 28 }}>🔥</div>
-                    <div style={{ fontSize: 16, fontFamily: 'Orbitron, monospace', fontWeight: 900, color: '#f59e0b', marginTop: 4 }}>114</div>
-                    <div style={{ fontSize: 10, color: 'var(--text-3)', textTransform: 'uppercase' }}>Day Streak</div>
                 </div>
             </Card>
 
-            {/* Badges / Achievements */}
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-1)', marginBottom: 16 }}>🏆 Achievements Showcase</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
-                {achievements.map((a, i) => (
-                    <motion.div key={a.id} {...fadeUp(i * 0.05)}>
-                        <Card style={{ padding: '18px', textAlign: 'center', opacity: a.locked ? 0.6 : 1, filter: a.locked ? 'grayscale(0.8)' : 'none', position: 'relative', overflow: 'hidden' }}>
-                            <div style={{ fontSize: 42, marginBottom: 10, filter: `drop-shadow(0 0 10px ${a.color}80)` }}>{a.icon}</div>
-                            <div style={{ fontSize: 10, padding: '2px 8px', borderRadius: 100, background: 'rgba(255,255,255,0.1)', color: a.locked ? 'var(--text-3)' : a.color, fontWeight: 700, display: 'inline-block', marginBottom: 8 }}>{a.tier}</div>
-                            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-1)', marginBottom: 4 }}>{a.name}</div>
-                            <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.4, height: 32 }}>{a.desc}</div>
-                            <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.1)', marginTop: 14 }}>
-                                <div style={{ width: `${a.progress}%`, height: '100%', borderRadius: 2, background: a.locked ? 'rgba(255,255,255,0.3)' : a.color }} />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 16, marginBottom: 20 }}>
+                {domains.map((d, i) => (
+                    <motion.div key={i} {...fadeUp(i * 0.06)}>
+                        <Card style={{ display: 'flex', alignItems: 'center', gap: 18, padding: '18px 20px' }}>
+                            <Score value={d.score} color={d.color} size={64} />
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, color: d.color, fontSize: 13 }}>{d.icon}<span style={{ fontWeight: 700, color: 'var(--text-1)' }}>{d.label}</span></div>
+                                <div style={{ height: 4, width: 100, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
+                                    <motion.div initial={{ width: 0 }} animate={{ width: `${d.score}%` }} transition={{ duration: 1.1, delay: 0.2 }} style={{ height: '100%', borderRadius: 2, background: d.color }} />
+                                </div>
                             </div>
                         </Card>
                     </motion.div>
+                ))}
+            </div>
+
+            {/* Quick stats */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 12 }}>
+                {[
+                    { label: 'Tasks Done', value: stats.tasks.done, icon: '✅', color: '#10b981' },
+                    { label: 'Habit Streak', value: `${stats.habits.maxStreak}d`, icon: '🔥', color: '#f59e0b' },
+                    { label: 'Workouts', value: stats.fitness.count, icon: '💪', color: '#ec4899' },
+                    { label: 'Journal Entries', value: stats.mental.journals, icon: '📓', color: '#7c3aed' },
+                    { label: 'Savings Rate', value: `${stats.finance.savingsRate}%`, icon: '💰', color: '#00f5ff' },
+                    { label: 'Avg Mood', value: stats.mental.avgMood ? `${stats.mental.avgMood}/5` : '–', icon: '😊', color: '#f97316' },
+                ].map((s, i) => (
+                    <div key={i} style={{ padding: '14px 16px', borderRadius: 14, background: `${s.color}0a`, border: `1px solid ${s.color}20` }}>
+                        <div style={{ fontSize: 20, marginBottom: 8 }}>{s.icon}</div>
+                        <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 20, fontWeight: 900, color: s.color }}>{s.value ?? 0}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>{s.label}</div>
+                    </div>
                 ))}
             </div>
         </div>
     );
 }
 
-function DeepTrends() {
+/* ── Trends Tab ───────────────────────────────────── */
+function TrendsTab({ stats }) {
+    const { fitness, finance, mental, habits } = stats;
+    const maxCat = Object.entries(finance.catSpend).sort((a, b) => b[1] - a[1]);
+    const maxType = Object.entries(fitness.workoutTypes).sort((a, b) => b[1] - a[1]);
+
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
+            {/* Mood trend */}
             <Card>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-1)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>🟩 12-Week Activity Density</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Jan - Mar 2026</div>
-                </div>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 16 }}>
-                    {heatmapData.map((val, i) => {
-                        const colors = ['rgba(255,255,255,0.03)', '#10b98130', '#10b98160', '#10b981', '#00f5ff'];
-                        return (
-                            <motion.div key={i} initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: Math.random() * 0.5 }}
-                                style={{ width: 14, height: 14, borderRadius: 4, background: colors[val], border: '1px solid rgba(255,255,255,0.02)' }}
-                                title={`Activity Level: ${val}`}
-                            />
-                        );
-                    })}
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, fontSize: 10, color: 'var(--text-3)' }}>
-                    Less <div style={{ display: 'flex', gap: 3 }}>{['rgba(255,255,255,0.03)', '#10b98130', '#10b98160', '#10b981', '#00f5ff'].map((c, i) => <div key={i} style={{ width: 10, height: 10, borderRadius: 2, background: c }} />)}</div> More
-                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>😊 Mood Trend (Last 7 Logs)</div>
+                {mental.moodTrend.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: 30, opacity: 0.5, fontSize: 13, color: 'var(--text-2)' }}>No mood logs yet</div>
+                ) : (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', height: 80 }}>
+                        {mental.moodTrend.map((m, i) => {
+                            const colors = ['#ef4444', '#f97316', '#f59e0b', '#10b981', '#00f5ff'];
+                            const c = colors[m.mood_value - 1] || '#7c3aed';
+                            return (
+                                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                                    <motion.div initial={{ height: 0 }} animate={{ height: `${m.mood_value / 5 * 70}px` }} transition={{ duration: 0.6, delay: i * 0.07 }}
+                                        style={{ width: '100%', background: `${c}40`, border: `1px solid ${c}`, borderRadius: 4, minHeight: 6 }} />
+                                    <span style={{ fontSize: 12 }}>{'😔😕😐🙂😄'[m.mood_value - 1]}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </Card>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-                <Card>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', marginBottom: 14, textTransform: 'uppercase', letterSpacing: '0.08em' }}>⚖️ Domain Balance Radar</div>
-                    <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.6 }}>
-                        {/* Stub for radar chart to keep it simple and native */}
-                        <div style={{ width: 150, height: 150, borderRadius: '50%', border: '1px dashed rgba(124,58,237,0.5)', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <div style={{ width: 100, height: 100, borderRadius: '40%', background: 'rgba(124,58,237,0.2)', position: 'absolute', transform: 'rotate(15deg) scale(1.2, 0.9)' }} />
-                            <div style={{ width: 80, height: 80, borderRadius: '40%', background: 'rgba(0,245,255,0.3)', position: 'absolute', transform: 'rotate(-45deg) scale(0.8, 1.1)' }} />
-                            <span style={{ fontSize: 10, position: 'absolute', top: -20 }}>Career 88</span>
-                            <span style={{ fontSize: 10, position: 'absolute', bottom: -20 }}>Mental 88</span>
-                            <span style={{ fontSize: 10, position: 'absolute', left: -40 }}>Fit 78</span>
-                            <span style={{ fontSize: 10, position: 'absolute', right: -45 }}>Fin 82</span>
+            {/* Top habits by streak */}
+            <Card>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>🔥 Top Habit Streaks</div>
+                {habits.top.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: 30, opacity: 0.5, fontSize: 13, color: 'var(--text-2)' }}>No habits tracked yet</div>
+                ) : habits.top.map((h, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                        <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 18, fontWeight: 900, color: '#f59e0b', width: 36 }}>{h.streak || 0}d</div>
+                        <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', marginBottom: 4 }}>{h.name}</div>
+                            <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.05)' }}>
+                                <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min((h.streak || 0) / 30 * 100, 100)}%` }} transition={{ duration: 0.8 }} style={{ height: '100%', borderRadius: 2, background: '#f59e0b' }} />
+                            </div>
                         </div>
                     </div>
-                </Card>
+                ))}
+            </Card>
 
-                <Card>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', marginBottom: 14, textTransform: 'uppercase', letterSpacing: '0.08em' }}>⚔️ Correlation Engine</div>
-                    <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 16 }}>How your domains interact based on past 90 days of data:</div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        {['High Sleep → +15% Focus Score', 'High Stress → -10% Spending Control', 'Workout Days → +20% Mood Score'].map((t, i) => (
-                            <div key={i} style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', borderLeft: `3px solid ${['#10b981', '#ef4444', '#7c3aed'][i]}` }}>
-                                <div style={{ fontSize: 12, color: 'var(--text-1)' }}>{t}</div>
+            {/* Spending breakdown */}
+            <Card>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>💸 Spending by Category</div>
+                {maxCat.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: 30, opacity: 0.5, fontSize: 13, color: 'var(--text-2)' }}>No expenses recorded</div>
+                ) : maxCat.slice(0, 5).map(([cat, amt], i) => {
+                    const max = maxCat[0][1];
+                    const COLORS = ['#7c3aed', '#00f5ff', '#f59e0b', '#ec4899', '#10b981'];
+                    return (
+                        <div key={i} style={{ marginBottom: 12 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{cat}</span>
+                                <span style={{ fontSize: 13, color: COLORS[i % 5], fontWeight: 700 }}>${Number(amt).toFixed(0)}</span>
                             </div>
-                        ))}
+                            <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.05)' }}>
+                                <motion.div initial={{ width: 0 }} animate={{ width: `${(amt / max) * 100}%` }} transition={{ duration: 0.8 }} style={{ height: '100%', borderRadius: 3, background: COLORS[i % 5] }} />
+                            </div>
+                        </div>
+                    );
+                })}
+            </Card>
+
+            {/* Workout types */}
+            <Card>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>🏋️ Workout Types</div>
+                {maxType.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: 30, opacity: 0.5, fontSize: 13, color: 'var(--text-2)' }}>No workouts logged yet</div>
+                ) : maxType.slice(0, 5).map(([type, count], i) => {
+                    const max = maxType[0][1];
+                    const COLORS = ['#ec4899', '#7c3aed', '#00f5ff', '#f59e0b', '#10b981'];
+                    return (
+                        <div key={i} style={{ marginBottom: 12 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                <span style={{ fontSize: 13, color: 'var(--text-2)' }}>{type}</span>
+                                <span style={{ fontSize: 13, color: COLORS[i % 5], fontWeight: 700 }}>{count} sessions</span>
+                            </div>
+                            <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.05)' }}>
+                                <motion.div initial={{ width: 0 }} animate={{ width: `${(count / max) * 100}%` }} transition={{ duration: 0.8 }} style={{ height: '100%', borderRadius: 3, background: COLORS[i % 5] }} />
+                            </div>
+                        </div>
+                    );
+                })}
+                {fitness.totalMins > 0 && (
+                    <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 10, background: 'rgba(236,72,153,0.08)', border: '1px solid rgba(236,72,153,0.2)', fontSize: 12, color: '#ec4899', fontWeight: 700 }}>
+                        🏆 {fitness.totalMins} total minutes trained
                     </div>
-                </Card>
-            </div>
+                )}
+            </Card>
         </div>
     );
 }
 
-function AIAnalyst() {
-    const [q, setQ] = useState('');
+/* ── Achievements Tab ─────────────────────────────── */
+function AchievementsTab({ stats }) {
+    const achievements = [
+        { id: 'first_task', title: 'First Step', desc: 'Complete your first task', icon: '✅', unlocked: stats.tasks.done >= 1 },
+        { id: 'task10', title: 'Task Crusher', desc: 'Complete 10 tasks', icon: '🎯', unlocked: stats.tasks.done >= 10 },
+        { id: 'habit', title: 'Habit Builder', desc: 'Create your first habit', icon: '🔁', unlocked: stats.habits.total >= 1 },
+        { id: 'streak7', title: 'Week Warrior', desc: 'Reach a 7-day streak', icon: '🔥', unlocked: stats.habits.maxStreak >= 7 },
+        { id: 'streak30', title: 'Iron Discipline', desc: 'Reach a 30-day streak', icon: '⚔️', unlocked: stats.habits.maxStreak >= 30 },
+        { id: 'workout1', title: 'First Sweat', desc: 'Log your first workout', icon: '💪', unlocked: stats.fitness.count >= 1 },
+        { id: 'workout10', title: 'Fitness Fanatic', desc: 'Log 10 workouts', icon: '🏋️', unlocked: stats.fitness.count >= 10 },
+        { id: 'journal1', title: 'Reflective', desc: 'Write your first journal entry', icon: '📓', unlocked: stats.mental.journals >= 1 },
+        { id: 'journal10', title: 'Mindful Writer', desc: 'Write 10 journal entries', icon: '✍️', unlocked: stats.mental.journals >= 10 },
+        { id: 'save', title: 'Saver', desc: 'Have a positive savings rate', icon: '💰', unlocked: stats.finance.savingsRate > 0 },
+        { id: 'goals', title: 'Goal Setter', desc: 'Create your first savings goal', icon: '🎪', unlocked: stats.finance.goalsCount >= 1 },
+        { id: 'score50', title: 'Halfway There', desc: 'Reach overall score of 50', icon: '⭐', unlocked: stats.overallScore >= 50 },
+        { id: 'score75', title: 'High Performer', desc: 'Reach overall score of 75', icon: '🌟', unlocked: stats.overallScore >= 75 },
+        { id: 'alldomains', title: 'Renaissance', desc: 'Have data in all 4 domains', icon: '🏆', unlocked: stats.tasks.total > 0 && stats.finance.income + stats.finance.expense > 0 && stats.fitness.count > 0 && stats.mental.journals > 0 },
+    ];
+
+    const unlocked = achievements.filter(a => a.unlocked);
+    const locked = achievements.filter(a => !a.unlocked);
+
+    return (
+        <div>
+            <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
+                <div style={{ flex: 1, padding: '18px 22px', borderRadius: 14, background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)', textAlign: 'center' }}>
+                    <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 32, fontWeight: 900, color: '#7c3aed' }}>{unlocked.length}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>Achievements Unlocked</div>
+                </div>
+                <div style={{ flex: 1, padding: '18px 22px', borderRadius: 14, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', textAlign: 'center' }}>
+                    <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 32, fontWeight: 900, color: '#f59e0b' }}>{locked.length}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>Still to Unlock</div>
+                </div>
+                <div style={{ flex: 1, padding: '18px 22px', borderRadius: 14, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', textAlign: 'center' }}>
+                    <div style={{ fontFamily: 'Orbitron, monospace', fontSize: 32, fontWeight: 900, color: '#10b981' }}>{Math.round(unlocked.length / achievements.length * 100)}%</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 4 }}>Completion Rate</div>
+                </div>
+            </div>
+
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>🏆 Unlocked</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 12, marginBottom: 24 }}>
+                {unlocked.map(a => (
+                    <motion.div key={a.id} whileHover={{ scale: 1.03 }} style={{ padding: '16px', borderRadius: 14, background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)' }}>
+                        <div style={{ fontSize: 28, marginBottom: 8 }}>{a.icon}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)', marginBottom: 3 }}>{a.title}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{a.desc}</div>
+                    </motion.div>
+                ))}
+                {unlocked.length === 0 && <div style={{ padding: 20, opacity: 0.5, fontSize: 13, color: 'var(--text-2)' }}>Start using PriMaX to earn achievements.</div>}
+            </div>
+
+            {locked.length > 0 && (
+                <>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>🔒 Locked</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 12 }}>
+                        {locked.map(a => (
+                            <div key={a.id} style={{ padding: '16px', borderRadius: 14, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', opacity: 0.5 }}>
+                                <div style={{ fontSize: 28, marginBottom: 8, filter: 'grayscale(1)' }}>{a.icon}</div>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-2)', marginBottom: 3 }}>{a.title}</div>
+                                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{a.desc}</div>
+                            </div>
+                        ))}
+                    </div>
+                </>
+            )}
+        </div>
+    );
+}
+
+/* ── AI Analyst Tab ───────────────────────────────── */
+function AIAnalystTab({ stats, userId }) {
     const [report, setReport] = useState('');
     const [loading, setLoading] = useState(false);
-    const ask = async () => {
-        if (!q.trim()) return;
+    const [q, setQ] = useState('');
+
+    const generateReport = async () => {
         setLoading(true); setReport('');
-        try {
-            const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-            const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-            const result = await model.generateContent(`You are PriMaX Hub's elite AI Data Scientist and Life Strategist. The user asks: "${q}"\n\nContext: Unified score 84/100. Career (88), Finance (82), Fitness (78), Mental (88). Working towards a 2030 Master Vision showing heavy trajectory optimization.\n\nProvide:\n1. Deep cross-domain data analysis\n2. Hidden bottlenecks\n3. Leverage points (where 20% of effort gets 80% results)\n4. Strategic recommendations\n\nUse headers, bullets, emojis. Be highly analytical and visionary. Keep under 350 words.`);
-            setReport(result.response.text());
-        } catch { setReport('⚠️ Could not generate analysis. Try again.'); }
+        const ctx = `User's life analytics:
+- Overall Score: ${stats.overallScore}/100
+- Productivity: ${stats.productivityScore}/100 | Tasks done: ${stats.tasks.done}/${stats.tasks.total} | Habit streak: ${stats.habits.maxStreak}d
+- Finance: ${stats.financeScore}/100 | Net: $${(stats.finance.net || 0).toFixed(0)} | Savings rate: ${stats.finance.savingsRate}%
+- Fitness: ${stats.fitnessScore}/100 | Workouts: ${stats.fitness.count} | Total minutes: ${stats.fitness.totalMins}
+- Mental: ${stats.mentalScore}/100 | Avg mood: ${stats.mental.avgMood || 'N/A'}/5 | Journal entries: ${stats.mental.journals}
+
+${q ? `User question: "${q}"` : 'Give a comprehensive life performance analysis. Identify strengths, weakest areas, and 3 top priority actions to improve the overall score. Be specific and motivating.'}`;
+        const { text, error } = await callGemini(ctx, SYSTEM_PROMPTS.global);
+        setReport(error ? `⚠️ ${error}` : text);
         setLoading(false);
     };
-    const prompts = ['Analyze my bottlenecks across all domains', 'What is the highest leverage action I can take this week?', 'Based on my data, will I hit my 2030 vision?', 'Find hidden correlations between my finance and health data'];
 
     return (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-            <Card style={{ background: 'linear-gradient(135deg,rgba(0,245,255,0.08),rgba(124,58,237,0.04))', border: '1px solid rgba(0,245,255,0.2)' }}>
-                <div style={{ fontSize: 32, marginBottom: 14 }}>📈</div>
-                <h3 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text-1)', marginBottom: 6 }}>AI Systems Analyst</h3>
-                <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.7, marginBottom: 20 }}>Query your entire life dataset. Discover hidden correlations, forecast trajectories, and optimize your master blueprint.</p>
-                <textarea value={q} onChange={e => setQ(e.target.value)} placeholder="Run an analysis query..." rows={4}
-                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--app-border)', borderRadius: 12, padding: '12px 14px', color: 'var(--text-1)', fontSize: 14, fontFamily: 'Inter, sans-serif', lineHeight: 1.7, resize: 'vertical', outline: 'none', marginBottom: 14 }} />
-                <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} onClick={ask} disabled={loading || !q.trim()}
-                    style={{ padding: '12px 28px', borderRadius: 12, background: 'linear-gradient(135deg,#00f5ff,#7c3aed)', border: 'none', color: '#000', fontSize: 14, fontWeight: 800, cursor: q.trim() ? 'pointer' : 'not-allowed', fontFamily: 'Inter, sans-serif', display: 'flex', alignItems: 'center', gap: 8, opacity: loading || !q.trim() ? 0.6 : 1 }}>
-                    {loading ? <><motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1 }} style={{ display: 'flex' }}><FiRotateCcw size={13} /></motion.div> Processing...</> : <><FiZap size={14} /> Run Analysis</>}
+            <Card>
+                <div style={{ fontSize: 28, marginBottom: 12 }}>🧬</div>
+                <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-1)', marginBottom: 6 }}>AI Life Analyst</h3>
+                <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 18 }}>Your AI analyst has access to all your real data. Ask anything about your performance.</p>
+                <textarea value={q} onChange={e => setQ(e.target.value)} placeholder="Optional: Ask a specific question about your analytics..." rows={3}
+                    style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--app-border)', borderRadius: 12, padding: 12, color: 'var(--text-1)', fontSize: 13, resize: 'vertical', outline: 'none', fontFamily: 'Inter, sans-serif', lineHeight: 1.7, marginBottom: 14 }} />
+                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={generateReport} disabled={loading}
+                    style={{ padding: 12, width: '100%', borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#00f5ff)', border: 'none', color: 'white', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: loading ? 0.6 : 1 }}>
+                    {loading ? <><Spinner /> Analysing...</> : <><FiZap /> Generate AI Report</>}
                 </motion.button>
-                <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 7 }}>
-                    <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Sample Queries:</span>
-                    {prompts.map((p, i) => (
-                        <button key={i} onClick={() => setQ(p)} style={{ textAlign: 'left', padding: '7px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: 'var(--text-2)', fontSize: 12, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>🔬 {p}</button>
+                <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    {['What is my biggest weakness right now?', 'How can I improve my productivity score?', 'Give me a 30-day improvement plan', 'Where should I focus my energy this month?'].map((p, i) => (
+                        <button key={i} onClick={() => setQ(p)} style={{ textAlign: 'left', padding: '7px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: 'var(--text-2)', fontSize: 12, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>💡 {p}</button>
                     ))}
                 </div>
             </Card>
-            <Card style={{ overflowY: 'auto', maxHeight: 600 }}>
+            <Card>
                 {report ? (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                            <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg,#00f5ff,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, color: '#000' }}>🔬</div>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: '#00f5ff', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Systems Report</span>
-                        </div>
-                        <div style={{ fontSize: 14, color: 'var(--text-1)', lineHeight: 1.85, whiteSpace: 'pre-wrap' }}>{report}</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>📊 AI Analysis</div>
+                        <div style={{ fontSize: 14, color: 'var(--text-1)', lineHeight: 1.9, whiteSpace: 'pre-wrap', overflowY: 'auto', maxHeight: 500 }}>{report}</div>
                     </motion.div>
                 ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center', padding: 32, opacity: 0.5 }}>
-                        <span style={{ fontSize: 48, marginBottom: 16 }}>📊</span>
-                        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-2)' }}>Intelligence Brief will appear here</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center', opacity: 0.5, padding: 32 }}>
+                        <span style={{ fontSize: 44, marginBottom: 14 }}>📈</span>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-2)' }}>Your AI analysis will appear here</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 8 }}>Click "Generate AI Report" to get started</div>
                     </div>
                 )}
             </Card>

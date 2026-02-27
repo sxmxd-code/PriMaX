@@ -9,8 +9,9 @@ import {
 } from 'react-icons/fi';
 import { useAuth } from '../../contexts/AuthContext';
 import { Link } from 'react-router-dom';
+import { supabase } from '../../lib/supabase';
 
-/* ─── Static data ─────────────────────────────────────── */
+/* ─── Static layout data ──────────────────────────────── */
 const weeklyScores = [72, 78, 65, 88, 82, 91, 88];
 const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -23,64 +24,28 @@ const lifeDimensions = [
     { label: 'Spirit', pct: 88, color: '#f97316', icon: '✨' },
 ];
 
-const priorityTasks = [
-    { text: 'Review Q1 revenue projections', module: 'Finance', color: '#f59e0b', urgent: true, done: false },
-    { text: 'Complete AWS Solutions Architect Module 7', module: 'Career', color: '#00f5ff', urgent: true, done: false },
-    { text: 'Morning run — 5km target', module: 'Fitness', color: '#ec4899', urgent: false, done: true },
-    { text: '10-min mindfulness session', module: 'Mental', color: '#f97316', urgent: false, done: true },
-    { text: 'Update startup pitch deck', module: 'Career', color: '#00f5ff', urgent: false, done: false },
-    { text: 'Deep work block: 2h coding', module: 'Productivity', color: '#7c3aed', urgent: false, done: false },
-];
-
-const agenda = [
-    { time: '07:00', label: 'Morning run + stretch', tag: 'Fitness', color: '#ec4899', done: true },
-    { time: '08:30', label: 'Deep work block — Code', tag: 'Productivity', color: '#7c3aed', done: true },
-    { time: '10:00', label: 'Team standup', tag: 'Career', color: '#00f5ff', done: true },
-    { time: '11:30', label: 'AWS Cert study session', tag: 'Career', color: '#00f5ff', done: false },
-    { time: '13:00', label: 'Lunch + reading (30m)', tag: 'Mental', color: '#f97316', done: false },
-    { time: '14:30', label: 'Q1 Finance review', tag: 'Finance', color: '#f59e0b', done: false },
-    { time: '16:00', label: 'AI Coach session', tag: 'AI', color: '#7c3aed', done: false },
-    { time: '19:00', label: 'Evening journal', tag: 'Mental', color: '#f97316', done: false },
-];
-
-const moduleActivity = [
-    { icon: <FiZap />, label: 'Productivity', value: '7/11 tasks', change: '+2 today', color: '#7c3aed', path: '/app/productivity' },
-    { icon: <FiBriefcase />, label: 'Career', value: '2 goals', change: '85% on track', color: '#00f5ff', path: '/app/career' },
-    { icon: <FiDollarSign />, label: 'Finance', value: '$1.2K saved', change: '+$340 vs last week', color: '#f59e0b', path: '/app/finance' },
-    { icon: <FiHeart />, label: 'Fitness', value: '12-day streak', change: '↑ 3d best', color: '#ec4899', path: '/app/fitness' },
-    { icon: <FiSun />, label: 'Mental', value: '88/100', change: '+5 pts', color: '#f97316', path: '/app/mental' },
-    { icon: <FiBarChart2 />, label: 'Analytics', value: '847 pts', change: '↑ 24 this week', color: '#10b981', path: '/app/analytics' },
-];
-
 const aiInsights = [
     {
         emoji: '🎯',
-        title: 'Peak focus window detected',
-        body: 'Your cognitive performance spikes between 9–11 AM. Schedule your highest-leverage tasks in this window for a projected 38% productivity gain.',
+        title: 'Start with your highest priority task',
+        body: 'Research shows starting the day tackling your most important task leads to 38% better productivity. Check your task list and pick your #1 item.',
         color: '#7c3aed',
-        action: 'Optimise schedule',
+        action: 'View Tasks',
     },
     {
         emoji: '💸',
-        title: 'Wealth momentum opportunity',
-        body: 'Your savings rate hit 28% this month — highest in 6 months. Now is a high-signal moment to redirect $300 into your ETF goal.',
+        title: 'Review your financial health',
+        body: 'Regular spending reviews help identify savings opportunities. Head to Finance to track your income, expenses, and savings goals.',
         color: '#f59e0b',
         action: 'Review Finance',
     },
     {
         emoji: '🔥',
-        title: 'Habit streak at risk',
-        body: 'You haven\'t logged hydration today. Your 12-day wellness streak will reset in 5 hours. Quick win available.',
+        title: 'Don\'t break your streak',
+        body: 'Consistency is the key to mastery. Log today\'s habits and workouts to keep your momentum going.',
         color: '#ec4899',
-        action: 'Log now',
+        action: 'Log Habits',
     },
-];
-
-const overviewStats = [
-    { label: 'Growth Score', value: '847', delta: '+24 this week', color: '#7c3aed', icon: <FiStar />, bg: 'rgba(124,58,237,0.12)' },
-    { label: 'Day Streak', value: '47', delta: 'Personal best!', color: '#f59e0b', icon: <FiZap />, bg: 'rgba(245,158,11,0.1)' },
-    { label: 'Goals Active', value: '12', delta: '3 due this week', color: '#00f5ff', icon: <FiTarget />, bg: 'rgba(0,245,255,0.08)' },
-    { label: 'Focus Hours', value: '4.2h', delta: '↑ 1.1h vs avg', color: '#10b981', icon: <FiActivity />, bg: 'rgba(16,185,129,0.1)' },
 ];
 
 /* ─── Animation variants ──────────────────────────────── */
@@ -214,7 +179,23 @@ export default function CommandCenter() {
     const { user } = useAuth();
     const [currentTime, setCurrentTime] = useState(new Date());
     const [insightIdx, setInsightIdx] = useState(0);
-    const [tasks, setTasks] = useState(priorityTasks);
+    // Real data from Supabase
+    const [tasks, setTasks] = useState([]);
+    const [moduleStats, setModuleStats] = useState({});
+    const overviewStats = [
+        { label: 'Open Tasks', value: moduleStats.openTasks ?? '–', delta: 'from Productivity', color: '#7c3aed', icon: <FiTarget />, bg: 'rgba(124,58,237,0.12)' },
+        { label: 'Habit Streak', value: moduleStats.streak ?? '–', delta: 'days in a row', color: '#f59e0b', icon: <FiZap />, bg: 'rgba(245,158,11,0.1)' },
+        { label: 'Savings Goals', value: moduleStats.goals ?? '–', delta: 'active goals', color: '#00f5ff', icon: <FiActivity />, bg: 'rgba(0,245,255,0.08)' },
+        { label: 'Net Balance', value: moduleStats.net ?? '–', delta: 'income – expenses', color: '#10b981', icon: <FiStar />, bg: 'rgba(16,185,129,0.1)' },
+    ];
+    const moduleActivity = [
+        { icon: <FiZap />, label: 'Productivity', value: `${moduleStats.openTasks ?? 0} tasks open`, change: 'Tap to manage', color: '#7c3aed', path: '/app/productivity' },
+        { icon: <FiBriefcase />, label: 'Career', value: moduleStats.careerRole ?? 'Set up profile', change: 'View roadmap', color: '#00f5ff', path: '/app/career' },
+        { icon: <FiDollarSign />, label: 'Finance', value: moduleStats.net ?? 'No data', change: 'Track spending', color: '#f59e0b', path: '/app/finance' },
+        { icon: <FiHeart />, label: 'Fitness', value: `${moduleStats.workouts ?? 0} workouts`, change: `${moduleStats.streak ?? 0}d streak`, color: '#ec4899', path: '/app/fitness' },
+        { icon: <FiSun />, label: 'Mental', value: `${moduleStats.journals ?? 0} entries`, change: 'Journal & Mood', color: '#f97316', path: '/app/mental' },
+        { icon: <FiBarChart2 />, label: 'Analytics', value: 'View insights', change: 'Cross-domain trends', color: '#10b981', path: '/app/analytics' },
+    ];
 
     useEffect(() => {
         const t = setInterval(() => setCurrentTime(new Date()), 60000);
@@ -226,13 +207,50 @@ export default function CommandCenter() {
         return () => clearInterval(t);
     }, []);
 
+    // Fetch real data
+    useEffect(() => {
+        if (!user) return;
+        (async () => {
+            const today = new Date().toISOString().split('T')[0];
+            const thisMonth = today.substring(0, 7);
+            const [taskRes, habitRes, goalRes, txRes, workoutRes, journalRes, careerRes] = await Promise.all([
+                supabase.from('tasks').select('status').eq('user_id', user.id).neq('status', 'done').limit(5),
+                supabase.from('habits').select('streak,completions').eq('user_id', user.id),
+                supabase.from('savings_goals').select('id').eq('user_id', user.id),
+                supabase.from('transactions').select('amount,type').eq('user_id', user.id),
+                supabase.from('workouts').select('id').eq('user_id', user.id).gte('completed_at', thisMonth + '-01'),
+                supabase.from('journal_entries').select('id').eq('user_id', user.id),
+                supabase.from('career_profiles').select('target_role').eq('user_id', user.id).maybeSingle(),
+            ]);
+            const openTasks = (taskRes.data || []).length;
+            const habits = habitRes.data || [];
+            const maxStreak = habits.length ? Math.max(...habits.map(h => h.streak || 0)) : 0;
+            const txs = txRes.data || [];
+            const income = txs.filter(t => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0);
+            const expense = txs.filter(t => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0);
+            const net = income - expense;
+            // Latest tasks as priority items
+            const { data: latestTasks } = await supabase.from('tasks').select('*').eq('user_id', user.id).neq('status', 'done').order('created_at', { ascending: false }).limit(6);
+            setTasks((latestTasks || []).map(t => ({ id: t.id, text: t.title, module: 'Productivity', color: '#7c3aed', urgent: t.priority === 'high', done: false, raw: t })));
+            setModuleStats({
+                openTasks,
+                streak: maxStreak,
+                goals: (goalRes.data || []).length,
+                net: net !== 0 ? `${net >= 0 ? '+' : ''}$${Math.abs(net).toFixed(0)}` : '$0',
+                workouts: (workoutRes.data || []).length,
+                journals: (journalRes.data || []).length,
+                careerRole: careerRes.data?.target_role || null,
+            });
+        })();
+    }, [user]);
+
     const hour = currentTime.getHours();
     const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
     const greetEmoji = hour < 12 ? '☀️' : hour < 17 ? '⚡' : '🌙';
     const userName = user?.user_metadata?.full_name?.split(' ')[0] || 'Growth Pioneer';
 
     const doneCount = tasks.filter(t => t.done).length;
-    const dayPct = Math.round((doneCount / tasks.length) * 100);
+    const dayPct = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
 
     const toggleTask = (i) =>
         setTasks(ts => ts.map((t, idx) => idx === i ? { ...t, done: !t.done } : t));
@@ -255,8 +273,7 @@ export default function CommandCenter() {
                             {greeting}, <span style={{ background: 'linear-gradient(135deg,#7c3aed,#00f5ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>{userName}</span> 👋
                         </h1>
                         <p style={{ fontSize: 15, color: 'var(--text-2)', marginTop: 8, lineHeight: 1.6 }}>
-                            You've completed <strong style={{ color: '#10b981' }}>{doneCount} of {tasks.length}</strong> priority tasks today.
-                            {dayPct >= 50 ? " You're crushing it. Keep the momentum!" : " Let's make today count."}
+                            {tasks.length > 0 ? <><strong style={{ color: '#10b981' }}>{doneCount} of {tasks.length}</strong> priority tasks done today. {dayPct >= 50 ? "You're crushing it!" : "Let's make today count."}</> : 'Add tasks in Productivity to track your daily progress.'}
                         </p>
                     </div>
 
@@ -364,8 +381,10 @@ export default function CommandCenter() {
                                 Priority Tasks
                             </SectionTitle>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                {tasks.map((task, i) => (
-                                    <motion.div key={i}
+                                {tasks.length === 0 ? (
+                                    <Link to="/app/productivity" style={{ textAlign: 'center', padding: '24px', display: 'block', borderRadius: 14, border: '1px dashed rgba(124,58,237,0.2)', color: 'var(--text-3)', fontSize: 13, textDecoration: 'none' }}>No open tasks — go add some in Productivity ✅</Link>
+                                ) : tasks.map((task, i) => (
+                                    <motion.div key={task.id ?? i}
                                         initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
                                         transition={{ delay: 0.25 + i * 0.05 }}
                                         whileHover={{ x: 3 }}
@@ -381,7 +400,7 @@ export default function CommandCenter() {
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                             {task.urgent && !task.done && (
-                                                <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 100, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171', fontWeight: 700 }}>URGENT</span>
+                                                <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 100, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#f87171', fontWeight: 700 }}>HIGH</span>
                                             )}
                                             <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 100, background: `${task.color}15`, border: `1px solid ${task.color}25`, color: task.color, fontWeight: 600 }}>
                                                 {task.module}
@@ -476,27 +495,27 @@ export default function CommandCenter() {
                                 {/* vertical timeline line */}
                                 <div style={{ position: 'absolute', left: 27, top: 8, bottom: 8, width: 1, background: 'rgba(255,255,255,0.06)' }} />
 
-                                {agenda.map((item, i) => {
-                                    const isCurrent = parseInt(item.time.split(':')[0]) === nowHour();
-                                    return (
-                                        <motion.div key={i}
-                                            initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}
-                                            transition={{ delay: 0.3 + i * 0.05 }}
-                                            style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '9px 6px', position: 'relative', background: isCurrent ? 'rgba(0,245,255,0.04)' : 'transparent', borderRadius: 10, marginBottom: 2 }}>
-                                            {/* dot */}
-                                            <div style={{ width: 10, height: 10, borderRadius: '50%', background: item.done ? '#10b981' : isCurrent ? '#00f5ff' : 'rgba(255,255,255,0.15)', border: `2px solid ${item.done ? '#10b981' : isCurrent ? '#00f5ff' : 'rgba(255,255,255,0.1)'}`, flexShrink: 0, marginLeft: 0, boxShadow: isCurrent ? '0 0 8px rgba(0,245,255,0.6)' : 'none', zIndex: 1 }} />
-                                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                <span style={{ fontSize: 10, color: 'var(--text-3)', fontWeight: 600, fontFamily: 'monospace', minWidth: 34 }}>{item.time}</span>
-                                                <div style={{ flex: 1 }}>
-                                                    <span style={{ fontSize: 12, color: item.done ? 'var(--text-3)' : isCurrent ? 'var(--text-1)' : 'var(--text-2)', fontWeight: isCurrent ? 700 : 500, textDecoration: item.done ? 'line-through' : 'none' }}>
-                                                        {item.label}
-                                                    </span>
-                                                </div>
-                                                <span style={{ fontSize: 10, color: item.color, background: `${item.color}15`, padding: '2px 6px', borderRadius: 5, fontWeight: 600, whiteSpace: 'nowrap' }}>{item.tag}</span>
+                                {tasks.length === 0 ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '24px 0', opacity: 0.6 }}>
+                                        <span style={{ fontSize: 32 }}>📅</span>
+                                        <span style={{ fontSize: 13, color: 'var(--text-2)' }}>Add tasks in Productivity to build your daily agenda.</span>
+                                    </div>
+                                ) : tasks.slice(0, 6).map((item, i) => (
+                                    <motion.div key={item.id ?? i}
+                                        initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: 0.3 + i * 0.05 }}
+                                        style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '9px 6px', borderRadius: 10, marginBottom: 2 }}>
+                                        <div style={{ width: 10, height: 10, borderRadius: '50%', background: item.done ? '#10b981' : 'rgba(255,255,255,0.15)', border: `2px solid ${item.done ? '#10b981' : 'rgba(255,255,255,0.1)'}`, flexShrink: 0, zIndex: 1 }} />
+                                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                            <div style={{ flex: 1 }}>
+                                                <span style={{ fontSize: 12, color: item.done ? 'var(--text-3)' : 'var(--text-2)', textDecoration: item.done ? 'line-through' : 'none' }}>
+                                                    {item.text}
+                                                </span>
                                             </div>
-                                        </motion.div>
-                                    );
-                                })}
+                                            <span style={{ fontSize: 10, color: item.color, background: `${item.color}15`, padding: '2px 6px', borderRadius: 5, fontWeight: 600 }}>{item.module}</span>
+                                        </div>
+                                    </motion.div>
+                                ))}
                             </div>
                         </Card>
                     </motion.div>

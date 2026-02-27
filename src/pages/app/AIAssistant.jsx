@@ -6,7 +6,12 @@ import { useAuth } from '../../contexts/AuthContext';
 
 // Initialise Gemini client once
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+function getModel() {
+    return genAI.getGenerativeModel({
+        model: 'gemini-2.5-flash',
+        systemInstruction: SYSTEM_PROMPT,
+    });
+}
 
 const SYSTEM_PROMPT = `You are the PriMaX AI Growth Coach — an elite personal development AI embedded inside PriMaX Hub, a premium AI-powered life OS.
 
@@ -50,12 +55,10 @@ export default function AIAssistant() {
     const [chat, setChat] = useState(null);
     const bottomRef = useRef(null);
 
-    // Initialise a persistent Gemini chat session
     useEffect(() => {
-        const newChat = model.startChat({
+        const newChat = getModel().startChat({
             history: [],
             generationConfig: { maxOutputTokens: 512, temperature: 0.85 },
-            systemInstruction: SYSTEM_PROMPT,
         });
         setChat(newChat);
     }, []);
@@ -90,10 +93,9 @@ export default function AIAssistant() {
     };
 
     const handleNewSession = () => {
-        const newChat = model.startChat({
+        const newChat = getModel().startChat({
             history: [],
             generationConfig: { maxOutputTokens: 512, temperature: 0.85 },
-            systemInstruction: SYSTEM_PROMPT,
         });
         setChat(newChat);
         setMessages(initialMessages);

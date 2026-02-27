@@ -1,153 +1,391 @@
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { FiSettings, FiUser, FiBell, FiShield, FiMonitor, FiSave, FiCheck } from 'react-icons/fi';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+    FiSettings, FiUser, FiBell, FiShield, FiMonitor, FiSave,
+    FiCheck, FiDownload, FiTrash2, FiLock, FiAlertTriangle, FiX,
+    FiMail, FiGlobe,
+} from 'react-icons/fi';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 
-const tabs = [
+const TABS = [
     { id: 'profile', label: 'Profile', icon: <FiUser size={14} /> },
     { id: 'appearance', label: 'Appearance', icon: <FiMonitor size={14} /> },
     { id: 'notifications', label: 'Notifications', icon: <FiBell size={14} /> },
     { id: 'security', label: 'Security', icon: <FiShield size={14} /> },
+    { id: 'data', label: 'Data & Privacy', icon: <FiDownload size={14} /> },
 ];
 
+const inputStyle = {
+    width: '100%', padding: '11px 14px', borderRadius: 10,
+    background: 'rgba(255,255,255,0.04)', border: '1px solid var(--app-border)',
+    color: 'var(--text-1)', fontSize: 14, fontFamily: 'Inter, sans-serif',
+    outline: 'none', boxSizing: 'border-box',
+};
+
+function StatusPill({ type, msg }) {
+    const colors = { success: '#10b981', error: '#f87171' };
+    return (
+        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', borderRadius: 10, background: `${colors[type]}10`, border: `1px solid ${colors[type]}30`, fontSize: 13, color: colors[type], marginBottom: 16 }}>
+            {type === 'success' ? <FiCheck size={13} /> : <FiX size={13} />} {msg}
+        </motion.div>
+    );
+}
+
 export default function Settings() {
-    const { theme, toggleTheme } = useTheme();
-    const { user } = useAuth();
+    const { user, signOut } = useAuth();
     const [activeTab, setActiveTab] = useState('profile');
-    const [saved, setSaved] = useState(false);
-
-    const handleSave = () => {
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2000);
-    };
-
-    const userName = user?.user_metadata?.full_name || 'Growth Pioneer';
-    const userEmail = user?.email || 'dev@primaxhub.ai';
 
     return (
         <div className="page-shell">
-            <div className="page-header">
+            <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} style={{ marginBottom: 24 }}>
                 <div className="page-tag"><FiSettings size={10} /> Settings</div>
                 <h1 className="page-title">Settings</h1>
-                <p className="page-desc">Customize your PriMaX Hub experience, manage your account, and configure integrations.</p>
-            </div>
+                <p className="page-desc">Manage your account, appearance, notifications, and data.</p>
+            </motion.div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 24 }}>
-                {/* Tab sidebar */}
-                <div style={{ padding: 16, borderRadius: 20, background: 'var(--app-surface)', border: '1px solid var(--app-border)', height: 'fit-content' }}>
-                    {tabs.map(t => (
+            <div style={{ display: 'grid', gridTemplateColumns: '210px 1fr', gap: 22, alignItems: 'start' }}>
+                {/* Sidebar */}
+                <div style={{ borderRadius: 18, background: 'var(--app-surface)', border: '1px solid var(--app-border)', padding: 14 }}>
+                    {TABS.map(t => (
                         <button key={t.id} onClick={() => setActiveTab(t.id)}
-                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderRadius: 10, width: '100%', background: activeTab === t.id ? 'rgba(124,58,237,0.15)' : 'transparent', border: activeTab === t.id ? '1px solid rgba(124,58,237,0.3)' : '1px solid transparent', color: activeTab === t.id ? '#f0f0ff' : 'var(--text-2)', fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 500, cursor: 'pointer', marginBottom: 4, textAlign: 'left', transition: 'all 0.2s' }}>
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderRadius: 10, width: '100%', marginBottom: 4, background: activeTab === t.id ? 'rgba(124,58,237,0.15)' : 'transparent', border: activeTab === t.id ? '1px solid rgba(124,58,237,0.3)' : '1px solid transparent', color: activeTab === t.id ? '#f0f0ff' : 'var(--text-2)', fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s' }}>
                             {t.icon} {t.label}
                         </button>
                     ))}
+                    <div style={{ borderTop: '1px solid var(--app-border)', marginTop: 8, paddingTop: 8 }}>
+                        <button onClick={signOut}
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderRadius: 10, width: '100%', background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.15)', color: '#f87171', fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}>
+                            <FiX size={14} /> Sign Out
+                        </button>
+                    </div>
                 </div>
 
-                {/* Tab content */}
-                <motion.div key={activeTab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }}
-                    style={{ padding: 28, borderRadius: 20, background: 'var(--app-surface)', border: '1px solid var(--app-border)' }}>
-                    {activeTab === 'profile' && (
-                        <div>
-                            <h3 style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-1)', marginBottom: 24 }}>Profile Settings</h3>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 32, padding: '20px', borderRadius: 16, background: 'rgba(124,58,237,0.06)', border: '1px solid rgba(124,58,237,0.2)' }}>
-                                <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'linear-gradient(135deg, #7c3aed, #00f5ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, fontWeight: 700 }}>
-                                    {userName.charAt(0)}
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-1)' }}>{userName}</div>
-                                    <div style={{ fontSize: 13, color: 'var(--text-3)', marginTop: 2 }}>{userEmail}</div>
-                                    <button style={{ marginTop: 10, padding: '7px 14px', borderRadius: 8, background: 'rgba(0,245,255,0.08)', border: '1px solid rgba(0,245,255,0.2)', color: '#00f5ff', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
-                                        Change avatar
-                                    </button>
-                                </div>
-                            </div>
-                            {[['Full Name', userName, 'text'], ['Email Address', userEmail, 'email'], ['Username', '@growthpioneer', 'text'], ['Bio', 'Building my best self with AI', 'text']].map(([label, val, type], i) => (
-                                <div key={i} className="form-group">
-                                    <label className="form-label">{label}</label>
-                                    <input className="form-input" type={type} defaultValue={val} />
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                    {activeTab === 'appearance' && (
-                        <div>
-                            <h3 style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-1)', marginBottom: 24 }}>Appearance</h3>
-                            <div style={{ marginBottom: 24 }}>
-                                <div className="form-label">Theme</div>
-                                <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-                                    {[{ label: '🌙 Dark', val: 'dark' }, { label: '☀️ Light', val: 'light' }].map(opt => (
-                                        <button key={opt.val} onClick={() => theme !== opt.val && toggleTheme()}
-                                            style={{ flex: 1, padding: '14px', borderRadius: 12, background: theme === opt.val ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.03)', border: `1px solid ${theme === opt.val ? 'rgba(124,58,237,0.5)' : 'rgba(255,255,255,0.1)'}`, color: 'var(--text-1)', fontFamily: 'Inter, sans-serif', fontSize: 14, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s' }}>
-                                            {opt.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            <div>
-                                <div className="form-label">Accent Color</div>
-                                <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-                                    {['#7c3aed', '#00f5ff', '#ec4899', '#10b981', '#f59e0b', '#f97316'].map(c => (
-                                        <button key={c} style={{ width: 36, height: 36, borderRadius: '50%', background: c, border: '3px solid transparent', cursor: 'pointer', transition: 'all 0.2s' }}
-                                            onMouseEnter={e => e.target.style.transform = 'scale(1.15)'}
-                                            onMouseLeave={e => e.target.style.transform = 'scale(1)'} />
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    {activeTab === 'notifications' && (
-                        <div>
-                            <h3 style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-1)', marginBottom: 24 }}>Notification Preferences</h3>
-                            {[
-                                ['Daily AI Briefing', 'Morning digest of insights and priorities', true],
-                                ['Goal Milestones', 'Celebrate when you hit key milestones', true],
-                                ['Habit Reminders', 'Timely nudges for your daily habits', true],
-                                ['Streak Alerts', 'Warnings when your streak is at risk', true],
-                                ['Weekly Reports', 'Sunday summary of your growth progress', false],
-                                ['AI Coach Insights', 'When your coach has new analysis', true],
-                            ].map(([title, desc, defaultOn], i) => (
-                                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0', borderBottom: '1px solid var(--app-border)' }}>
-                                    <div>
-                                        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-1)' }}>{title}</div>
-                                        <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2 }}>{desc}</div>
-                                    </div>
-                                    <div style={{ position: 'relative', width: 44, height: 24, borderRadius: 12, background: defaultOn ? 'linear-gradient(135deg, #7c3aed, #00f5ff)' : 'rgba(255,255,255,0.1)', cursor: 'pointer', flexShrink: 0 }}>
-                                        <div style={{ position: 'absolute', top: 3, width: 18, height: 18, borderRadius: '50%', background: 'white', transition: 'left 0.2s', left: defaultOn ? 23 : 3 }} />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                    {activeTab === 'security' && (
-                        <div>
-                            <h3 style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-1)', marginBottom: 24 }}>Security & Privacy</h3>
-                            <div style={{ padding: '20px', borderRadius: 14, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', marginBottom: 24, display: 'flex', gap: 12, alignItems: 'center' }}>
-                                <FiShield size={20} style={{ color: '#10b981', flexShrink: 0 }} />
-                                <span style={{ fontSize: 14, color: '#10b981', fontWeight: 600 }}>Your account is secure. Last login: Today at 2:33 PM</span>
-                            </div>
-                            {[['Change Password', 'Update your account password'], ['Two-Factor Authentication', 'Add an extra layer of security'], ['Connected Apps', 'Manage OAuth connections'], ['Export My Data', 'Download all your growth data'], ['Delete Account', 'Permanently remove your account']].map(([label, desc], i) => (
-                                <button key={i} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0', borderBottom: '1px solid var(--app-border)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
-                                    <div>
-                                        <div style={{ fontSize: 14, fontWeight: 600, color: i === 4 ? '#f87171' : 'var(--text-1)', textAlign: 'left' }}>{label}</div>
-                                        <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 2, textAlign: 'left' }}>{desc}</div>
-                                    </div>
-                                    <span style={{ color: 'var(--text-3)', fontSize: 18 }}>›</span>
-                                </button>
-                            ))}
-                        </div>
-                    )}
+                {/* Content */}
+                <AnimatePresence mode="wait">
+                    <motion.div key={activeTab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}
+                        style={{ borderRadius: 18, background: 'var(--app-surface)', border: '1px solid var(--app-border)', padding: 28 }}>
+                        {activeTab === 'profile' && <ProfileTab user={user} />}
+                        {activeTab === 'appearance' && <AppearanceTab />}
+                        {activeTab === 'notifications' && <NotificationsTab />}
+                        {activeTab === 'security' && <SecurityTab user={user} />}
+                        {activeTab === 'data' && <DataTab user={user} />}
+                    </motion.div>
+                </AnimatePresence>
+            </div>
+        </div>
+    );
+}
 
-                    {/* Save button */}
-                    {activeTab !== 'security' && (
-                        <div style={{ marginTop: 28, borderTop: '1px solid var(--app-border)', paddingTop: 20 }}>
-                            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handleSave}
-                                style={{ padding: '12px 28px', borderRadius: 12, background: saved ? '#10b981' : 'linear-gradient(135deg, #7c3aed, #00f5ff)', border: 'none', color: 'white', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'Inter, sans-serif', display: 'flex', alignItems: 'center', gap: 8, transition: 'background 0.3s' }}>
-                                {saved ? <><FiCheck size={15} /> Saved!</> : <><FiSave size={15} /> Save Changes</>}
-                            </motion.button>
+/* ── Profile Tab ─────────────────────────────────── */
+function ProfileTab({ user }) {
+    const [form, setForm] = useState({ full_name: '', primary_goal: '', focus_areas: [] });
+    const [status, setStatus] = useState(null);
+    const [saving, setSaving] = useState(false);
+    const FOCUS = ['Career', 'Finance', 'Fitness', 'Mental Growth', 'Productivity'];
+
+    useEffect(() => {
+        if (!user) return;
+        supabase.from('profiles').select('full_name,primary_goal,focus_areas').eq('id', user.id).maybeSingle()
+            .then(({ data }) => { if (data) setForm({ full_name: data.full_name || '', primary_goal: data.primary_goal || '', focus_areas: data.focus_areas || [] }); });
+    }, [user]);
+
+    const save = async () => {
+        setSaving(true); setStatus(null);
+        const { error } = await supabase.from('profiles').upsert({ id: user.id, ...form, updated_at: new Date().toISOString() });
+        // Also update auth meta
+        await supabase.auth.updateUser({ data: { full_name: form.full_name } });
+        setStatus(error ? { type: 'error', msg: error.message } : { type: 'success', msg: 'Profile saved successfully.' });
+        setSaving(false);
+    };
+
+    const toggleFocus = (area) => {
+        setForm(f => ({
+            ...f,
+            focus_areas: f.focus_areas.includes(area)
+                ? f.focus_areas.filter(a => a !== area)
+                : [...f.focus_areas, area],
+        }));
+    };
+
+    return (
+        <div>
+            <h2 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text-1)', marginBottom: 4 }}>Profile</h2>
+            <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 22 }}>Your personal information and growth preferences.</p>
+            {status && <StatusPill type={status.type} msg={status.msg} />}
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24, padding: 16, borderRadius: 14, background: 'rgba(124,58,237,0.05)', border: '1px solid rgba(124,58,237,0.15)' }}>
+                <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'linear-gradient(135deg,#7c3aed,#00f5ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 900, color: 'white', flexShrink: 0 }}>
+                    {(form.full_name || user?.email || 'U').charAt(0).toUpperCase()}
+                </div>
+                <div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-1)' }}>{form.full_name || 'Your Name'}</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 6 }}><FiMail size={11} /> {user?.email}</div>
+                </div>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Full Name</label>
+                <input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} placeholder="Your full name" style={inputStyle} />
+            </div>
+            <div style={{ marginBottom: 20 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Primary Goal</label>
+                <input value={form.primary_goal} onChange={e => setForm(f => ({ ...f, primary_goal: e.target.value }))} placeholder="e.g. Get promoted to Senior Engineer by end of year" style={inputStyle} />
+                <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 6 }}>Used to personalise AI recommendations across all modules.</div>
+            </div>
+            <div style={{ marginBottom: 24 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Focus Areas</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {FOCUS.map(area => (
+                        <button key={area} onClick={() => toggleFocus(area)}
+                            style={{ padding: '7px 16px', borderRadius: 100, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif', border: form.focus_areas.includes(area) ? '1px solid rgba(124,58,237,0.5)' : '1px solid var(--app-border)', background: form.focus_areas.includes(area) ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.03)', color: form.focus_areas.includes(area) ? '#f0f0ff' : 'var(--text-3)', transition: 'all 0.2s' }}>
+                            {form.focus_areas.includes(area) ? '✓ ' : ''}{area}
+                        </button>
+                    ))}
+                </div>
+            </div>
+            <button onClick={save} disabled={saving}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#00f5ff)', border: 'none', color: 'white', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif', opacity: saving ? 0.6 : 1 }}>
+                <FiSave size={14} /> {saving ? 'Saving...' : 'Save Profile'}
+            </button>
+        </div>
+    );
+}
+
+/* ── Appearance Tab ─────────────────────────────── */
+function AppearanceTab() {
+    const [accentColor, setAccentColor] = useState(localStorage.getItem('accent') || '#7c3aed');
+    const [fontSize, setFontSize] = useState(localStorage.getItem('font_size') || 'medium');
+    const [saved, setSaved] = useState(false);
+
+    const ACCENTS = ['#7c3aed', '#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#f97316'];
+    const SIZES = [{ id: 'small', label: 'Small' }, { id: 'medium', label: 'Medium' }, { id: 'large', label: 'Large' }];
+
+    const save = () => {
+        localStorage.setItem('accent', accentColor);
+        localStorage.setItem('font_size', fontSize);
+        document.documentElement.style.setProperty('--accent', accentColor);
+        setSaved(true); setTimeout(() => setSaved(false), 2000);
+    };
+
+    return (
+        <div>
+            <h2 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text-1)', marginBottom: 4 }}>Appearance</h2>
+            <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 22 }}>Customise how PriMaX Hub looks and feels.</p>
+
+            <div style={{ marginBottom: 24 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Theme</label>
+                <div style={{ display: 'flex', gap: 10 }}>
+                    {[{ id: 'dark', label: '🌙 Dark', active: true }, { id: 'light', label: '☀️ Light', active: false }].map(t => (
+                        <button key={t.id} disabled={!t.active}
+                            style={{ padding: '10px 20px', borderRadius: 10, background: t.active ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.03)', border: t.active ? '1px solid rgba(124,58,237,0.4)' : '1px solid var(--app-border)', color: t.active ? '#f0f0ff' : 'var(--text-3)', fontSize: 13, fontWeight: 700, cursor: t.active ? 'pointer' : 'not-allowed', fontFamily: 'Inter, sans-serif', opacity: t.active ? 1 : 0.4 }}>
+                            {t.label} {!t.active && '(coming soon)'}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div style={{ marginBottom: 24 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Accent Colour</label>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {ACCENTS.map(c => (
+                        <button key={c} onClick={() => setAccentColor(c)}
+                            style={{ width: 36, height: 36, borderRadius: '50%', background: c, border: accentColor === c ? '2px solid white' : '2px solid transparent', cursor: 'pointer', outline: accentColor === c ? `3px solid ${c}` : 'none', outlineOffset: 2, transition: 'all 0.2s' }} />
+                    ))}
+                </div>
+            </div>
+
+            <div style={{ marginBottom: 28 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Interface Density</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                    {SIZES.map(s => (
+                        <button key={s.id} onClick={() => setFontSize(s.id)}
+                            style={{ padding: '9px 18px', borderRadius: 10, background: fontSize === s.id ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.03)', border: fontSize === s.id ? '1px solid rgba(124,58,237,0.4)' : '1px solid var(--app-border)', color: fontSize === s.id ? '#f0f0ff' : 'var(--text-3)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif', transition: 'all 0.2s' }}>
+                            {s.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <button onClick={save}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#00f5ff)', border: 'none', color: 'white', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+                {saved ? <><FiCheck size={14} /> Saved!</> : <><FiSave size={14} /> Apply Changes</>}
+            </button>
+        </div>
+    );
+}
+
+/* ── Notifications Tab ────────────────────────────── */
+function NotificationsTab() {
+    const [prefs, setPrefs] = useState({
+        daily_reminder: true, habit_nudge: true, goal_milestone: true,
+        ai_insights: true, weekly_report: false, streak_alert: true,
+    });
+    const [saved, setSaved] = useState(false);
+
+    const toggle = (key) => setPrefs(p => ({ ...p, [key]: !p[key] }));
+    const save = () => {
+        localStorage.setItem('notif_prefs', JSON.stringify(prefs));
+        setSaved(true); setTimeout(() => setSaved(false), 2000);
+    };
+
+    const items = [
+        { key: 'daily_reminder', label: 'Daily Check-in Reminder', desc: 'Remind me to log my day each evening' },
+        { key: 'habit_nudge', label: 'Habit Nudges', desc: 'Alert me if I haven\'t completed habits by midday' },
+        { key: 'goal_milestone', label: 'Goal Milestones', desc: 'Notify when I reach a savings or career milestone' },
+        { key: 'ai_insights', label: 'AI Insights', desc: 'Receive weekly AI-generated growth tips' },
+        { key: 'streak_alert', label: 'Streak Alerts', desc: 'Warn before a habit streak is broken' },
+        { key: 'weekly_report', label: 'Weekly Report', desc: 'Get a Sunday summary of the week\'s performance' },
+    ];
+
+    return (
+        <div>
+            <h2 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text-1)', marginBottom: 4 }}>Notifications</h2>
+            <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 22 }}>Control what PriMaX Hub notifies you about.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginBottom: 24 }}>
+                {items.map(item => (
+                    <div key={item.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px', borderRadius: 12, background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <div>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-1)', marginBottom: 2 }}>{item.label}</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-3)' }}>{item.desc}</div>
                         </div>
-                    )}
-                </motion.div>
+                        <button onClick={() => toggle(item.key)}
+                            style={{ width: 44, height: 24, borderRadius: 12, background: prefs[item.key] ? 'linear-gradient(135deg,#7c3aed,#00f5ff)' : 'rgba(255,255,255,0.08)', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0, transition: 'background 0.3s' }}>
+                            <motion.div animate={{ x: prefs[item.key] ? 20 : 2 }}
+                                style={{ width: 20, height: 20, borderRadius: '50%', background: 'white', position: 'absolute', top: 2 }} />
+                        </button>
+                    </div>
+                ))}
+            </div>
+            <button onClick={save}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#00f5ff)', border: 'none', color: 'white', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+                {saved ? <><FiCheck size={14} /> Saved!</> : <><FiSave size={14} /> Save Preferences</>}
+            </button>
+        </div>
+    );
+}
+
+/* ── Security Tab ────────────────────────────────── */
+function SecurityTab({ user }) {
+    const [form, setForm] = useState({ new_password: '', confirm_password: '' });
+    const [status, setStatus] = useState(null);
+    const [saving, setSaving] = useState(false);
+
+    const changePassword = async () => {
+        if (!form.new_password || form.new_password.length < 8) { setStatus({ type: 'error', msg: 'Password must be at least 8 characters.' }); return; }
+        if (form.new_password !== form.confirm_password) { setStatus({ type: 'error', msg: 'Passwords do not match.' }); return; }
+        setSaving(true); setStatus(null);
+        const { error } = await supabase.auth.updateUser({ password: form.new_password });
+        setStatus(error ? { type: 'error', msg: error.message } : { type: 'success', msg: 'Password updated successfully.' });
+        setForm({ new_password: '', confirm_password: '' });
+        setSaving(false);
+    };
+
+    return (
+        <div>
+            <h2 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text-1)', marginBottom: 4 }}>Security</h2>
+            <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 22 }}>Manage your password and account security.</p>
+
+            <div style={{ padding: '14px 18px', borderRadius: 12, background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
+                <FiMail size={14} style={{ color: '#10b981', flexShrink: 0 }} />
+                <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)' }}>Account Email</div>
+                    <div style={{ fontSize: 12, color: '#10b981' }}>{user?.email}</div>
+                </div>
+            </div>
+
+            {status && <StatusPill type={status.type} msg={status.msg} />}
+
+            <div style={{ marginBottom: 22 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-1)', marginBottom: 14 }}>Change Password</h3>
+                <div style={{ marginBottom: 12 }}>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>New Password</label>
+                    <input type="password" value={form.new_password} onChange={e => setForm(f => ({ ...f, new_password: e.target.value }))} placeholder="Min. 8 characters" style={inputStyle} />
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Confirm Password</label>
+                    <input type="password" value={form.confirm_password} onChange={e => setForm(f => ({ ...f, confirm_password: e.target.value }))} placeholder="Repeat new password" style={inputStyle} />
+                </div>
+                <button onClick={changePassword} disabled={saving}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', borderRadius: 12, background: 'linear-gradient(135deg,#7c3aed,#00f5ff)', border: 'none', color: 'white', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif', opacity: saving ? 0.6 : 1 }}>
+                    <FiLock size={14} /> {saving ? 'Updating...' : 'Update Password'}
+                </button>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--app-border)', paddingTop: 22 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-1)', marginBottom: 8 }}>Active Sessions</h3>
+                <div style={{ padding: '14px 18px', borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--app-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)' }}>Current Session</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Last sign-in: {user?.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : '–'}</div>
+                    </div>
+                    <span style={{ fontSize: 11, color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '4px 10px', borderRadius: 100, fontWeight: 700 }}>Active</span>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/* ── Data & Privacy Tab ───────────────────────────── */
+function DataTab({ user }) {
+    const [exporting, setExporting] = useState(false);
+    const [deleteConfirm, setDeleteConfirm] = useState('');
+    const [deleting, setDeleting] = useState(false);
+    const [status, setStatus] = useState(null);
+
+    const exportData = async () => {
+        setExporting(true);
+        const tables = ['tasks', 'habits', 'transactions', 'savings_goals', 'workouts', 'journal_entries', 'mood_logs', 'gratitude_entries', 'career_profiles'];
+        const exportObj = { exported_at: new Date().toISOString(), user_id: user.id };
+        for (const tbl of tables) {
+            const { data } = await supabase.from(tbl).select('*').eq('user_id', user.id);
+            exportObj[tbl] = data || [];
+        }
+        const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `primax-export-${Date.now()}.json`; a.click();
+        URL.revokeObjectURL(url);
+        setExporting(false);
+    };
+
+    const deleteAllData = async () => {
+        if (deleteConfirm !== 'DELETE') { setStatus({ type: 'error', msg: 'Type DELETE to confirm.' }); return; }
+        setDeleting(true);
+        const tables = ['tasks', 'habits', 'transactions', 'savings_goals', 'workouts', 'journal_entries', 'mood_logs', 'gratitude_entries', 'career_profiles', 'career_milestones', 'job_applications', 'budgets', 'subscriptions'];
+        for (const tbl of tables) { await supabase.from(tbl).delete().eq('user_id', user.id); }
+        setStatus({ type: 'success', msg: 'All data deleted. Your account is now empty.' });
+        setDeleteConfirm(''); setDeleting(false);
+    };
+
+    return (
+        <div>
+            <h2 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text-1)', marginBottom: 4 }}>Data & Privacy</h2>
+            <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 22 }}>Export your data or manage your account data.</p>
+            {status && <StatusPill type={status.type} msg={status.msg} />}
+
+            <div style={{ padding: 20, borderRadius: 14, background: 'rgba(0,245,255,0.04)', border: '1px solid rgba(0,245,255,0.15)', marginBottom: 24 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-1)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}><FiDownload size={14} /> Export Your Data</h3>
+                <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 16 }}>Download all your tasks, habits, transactions, workouts, journal entries and more as JSON.</p>
+                <button onClick={exportData} disabled={exporting}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 22px', borderRadius: 10, background: 'rgba(0,245,255,0.1)', border: '1px solid rgba(0,245,255,0.3)', color: '#00f5ff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+                    <FiDownload size={13} /> {exporting ? 'Exporting...' : 'Export All Data (JSON)'}
+                </button>
+            </div>
+
+            <div style={{ padding: 20, borderRadius: 14, background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: '#f87171', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}><FiAlertTriangle size={14} /> Delete All Data</h3>
+                <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 16 }}>Permanently delete all your personal data from PriMaX Hub. This cannot be undone. Your account remains active.</p>
+                <div style={{ marginBottom: 12 }}>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#f87171', marginBottom: 8 }}>Type DELETE to confirm</label>
+                    <input value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)} placeholder="TYPE DELETE"
+                        style={{ ...inputStyle, border: '1px solid rgba(239,68,68,0.3)', color: '#f87171', maxWidth: 220 }} />
+                </div>
+                <button onClick={deleteAllData} disabled={deleting || deleteConfirm !== 'DELETE'}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 22px', borderRadius: 10, background: deleteConfirm === 'DELETE' ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.03)', border: `1px solid ${deleteConfirm === 'DELETE' ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.06)'}`, color: deleteConfirm === 'DELETE' ? '#f87171' : 'var(--text-3)', fontSize: 13, fontWeight: 700, cursor: deleteConfirm === 'DELETE' ? 'pointer' : 'not-allowed', fontFamily: 'Inter, sans-serif', transition: 'all 0.2s' }}>
+                    <FiTrash2 size={13} /> {deleting ? 'Deleting...' : 'Delete All My Data'}
+                </button>
             </div>
         </div>
     );

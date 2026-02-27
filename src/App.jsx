@@ -23,6 +23,7 @@ import MentalGrowth from './pages/app/MentalGrowth';
 import Analytics from './pages/app/Analytics';
 import AIAssistant from './pages/app/AIAssistant';
 import Settings from './pages/app/Settings';
+import Onboarding from './pages/app/Onboarding';
 
 import './index.css';
 import './app.css';
@@ -40,13 +41,21 @@ export default function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
 
+            {/* Onboarding — protected but outside AppLayout */}
+            <Route path="/app/onboarding" element={
+              <ProtectedRoute>
+                <Onboarding />
+              </ProtectedRoute>
+            } />
+
             {/* Protected app routes */}
             <Route path="/app" element={
               <ProtectedRoute>
                 <AppLayout />
               </ProtectedRoute>
             }>
-              <Route index element={<CommandCenter />} />
+              <Route index element={<Navigate to="dashboard" replace />} />
+              <Route path="dashboard" element={<CommandCenter />} />
               <Route path="productivity" element={<Productivity />} />
               <Route path="career" element={<Career />} />
               <Route path="finance" element={<Finance />} />
